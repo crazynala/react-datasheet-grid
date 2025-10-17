@@ -2,17 +2,14 @@
   "compilerOptions": {
     "incremental": true,
     "target": "ES2015",
-    "module": "commonjs",
+    "module": "ESNext",
     "allowJs": false,
-    "jsx": "react",
+    "jsx": "react-jsx",
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
     "rootDir": "src",
-    "lib": [
-      "DOM",
-      "ESNext"
-    ],
+    "lib": ["DOM", "ESNext"],
     "outDir": "dist",
     "downlevelIteration": true,
     "isolatedModules": true,
@@ -31,7 +28,5 @@
     "src/**/*.test.ts",
     "src/**/*.test.tsx"
   ],
-  "include": [
-    "src/**/*"
-  ]
+  "include": ["src/**/*"]
 }

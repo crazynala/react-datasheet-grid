@@ -6,6 +6,7 @@ import React, {
   useRef,
   useState,
 } from 'react'
+import type { ReactElement, JSX as ReactJSX } from 'react'
 import {
   Cell,
   Column,
@@ -42,6 +43,7 @@ import { getAllTabbableElements } from '../utils/tab'
 import { Grid } from './Grid'
 import { SelectionRect } from './SelectionRect'
 import { useRowHeights } from '../hooks/useRowHeights'
+import cx from 'classnames'
 
 const DEFAULT_DATA: any[] = []
 const DEFAULT_COLUMNS: Column<any, any, any>[] = []
@@ -72,14 +74,14 @@ export const DataSheetGrid = React.memo(
         gutterColumn,
         stickyRightColumn,
         rowKey,
-        addRowsComponent: AddRowsComponent = AddRows,
+        addRowsComponent: AddRowsComponent = AddRows as any,
         createRow = DEFAULT_CREATE_ROW as () => T,
         autoAddRow = false,
         lockRows = false,
         disableExpandSelection = false,
         disableSmartDelete = false,
         duplicateRow = DEFAULT_DUPLICATE_ROW,
-        contextMenuComponent: ContextMenuComponent = ContextMenu,
+        contextMenuComponent: ContextMenuComponent = ContextMenu as any,
         disableContextMenu: disableContextMenuRaw = false,
         onFocus = DEFAULT_EMPTY_CALLBACK,
         onBlur = DEFAULT_EMPTY_CALLBACK,
@@ -88,15 +90,21 @@ export const DataSheetGrid = React.memo(
         rowClassName,
         cellClassName,
         onScroll,
+        // Blocks support
+        getBlockKey,
+        blockAutoInsert = false,
+        createRowInBlock,
+        blockTopClassName,
+        debugBlocks = false,
       }: DataSheetGridProps<T>,
       ref: React.ForwardedRef<DataSheetGridRef>
-    ): JSX.Element => {
+    ): ReactJSX.Element => {
       const lastEditingCellRef = useRef<Cell | null>(null)
       const disableContextMenu = disableContextMenuRaw || lockRows
       const columns = useColumns(rawColumns, gutterColumn, stickyRightColumn)
       const hasStickyRightColumn = Boolean(stickyRightColumn)
-      const innerRef = useRef<HTMLDivElement>(null)
-      const outerRef = useRef<HTMLDivElement>(null)
+      const innerRef = useRef<HTMLDivElement>(null!)
+      const outerRef = useRef<HTMLDivElement>(null!)
       const beforeTabIndexRef = useRef<HTMLDivElement>(null)
       const afterTabIndexRef = useRef<HTMLDivElement>(null)
 
@@ -123,7 +131,7 @@ export const DataSheetGrid = React.memo(
 
       setHeightDiff(height ? displayHeight - height : 0)
 
-      const edges = useEdges(outerRef, width, height)
+      const edges = useEdges(outerRef as any, width, height)
 
       const {
         fullWidth,
@@ -211,8 +219,12 @@ export const DataSheetGrid = React.memo(
           ? null
           : expandSelectionRowsCount
 
-      const getInnerBoundingClientRect = useGetBoundingClientRect(innerRef)
-      const getOuterBoundingClientRect = useGetBoundingClientRect(outerRef)
+      const getInnerBoundingClientRect = useGetBoundingClientRect(
+        innerRef as any
+      )
+      const getOuterBoundingClientRect = useGetBoundingClientRect(
+        outerRef as any
+      )
 
       // Blur any element on focusing the grid
       useEffect(() => {
@@ -700,6 +712,39 @@ export const DataSheetGrid = React.memo(
             const min: Cell = selection?.min || activeCell
             const max: Cell = selection?.max || activeCell
 
+            // Block support: constrain paste to current block, and optionally auto-insert within that block
+            // getBlockKey etc come from props destructuring above
+
+            const getBlockBounds = (
+              startRow: number,
+              arr: any[]
+            ): { start: number; end: number; key: any } => {
+              if (!getBlockKey || arr.length === 0) {
+                if (debugBlocks)
+                  console.log('[dsg] blocks: no getBlockKey, using full range')
+                return { start: 0, end: arr.length, key: null }
+              }
+              const key = getBlockKey({
+                rowData: arr[startRow],
+                rowIndex: startRow,
+              })
+              let s = startRow
+              while (
+                s - 1 >= 0 &&
+                getBlockKey({ rowData: arr[s - 1], rowIndex: s - 1 }) === key
+              )
+                s--
+              let e = startRow + 1
+              while (
+                e < arr.length &&
+                getBlockKey({ rowData: arr[e], rowIndex: e }) === key
+              )
+                e++
+              if (debugBlocks)
+                console.log('[dsg] blocks: bounds', { start: s, end: e, key })
+              return { start: s, end: e, key }
+            }
+
             const results = await Promise.all(
               pasteData[0].map((_, columnIndex) => {
                 const prePasteValues =
@@ -716,7 +761,20 @@ export const DataSheetGrid = React.memo(
 
             // Paste single row
             if (pasteData.length === 1) {
-              const newData = [...data]
+              let newData = [...data]
+              const {
+                start: blockStart,
+                end: blockEnd,
+                key: blockKey,
+              } = getBlockBounds(min.row, newData)
+              if (debugBlocks)
+                console.log('[dsg] paste single-row', {
+                  minRow: min.row,
+                  maxRow: max.row,
+                  blockStart,
+                  blockEnd,
+                  blockKey,
+                })
 
               for (
                 let columnIndex = 0;
@@ -738,10 +796,17 @@ export const DataSheetGrid = React.memo(
                         row: rowIndex,
                       })
                     ) {
-                      newData[rowIndex] = await pasteValue({
-                        rowData: newData[rowIndex],
+                      // Prevent writing past the block end by clamping to blockEnd - 1
+                      const targetRow = Math.min(rowIndex, blockEnd - 1)
+                      if (debugBlocks && targetRow !== rowIndex)
+                        console.log('[dsg] clamp single targetRow', {
+                          from: rowIndex,
+                          to: targetRow,
+                        })
+                      newData[targetRow] = await pasteValue({
+                        rowData: newData[targetRow],
                         value: pasteData[0][columnIndex],
-                        rowIndex,
+                        rowIndex: targetRow,
                       })
                     }
                   }
@@ -763,19 +828,81 @@ export const DataSheetGrid = React.memo(
                 ),
                 row: max.row,
               })
+              if (debugBlocks)
+                console.log('[dsg] selection after single-row paste', {
+                  col: min.col,
+                  row: min.row,
+                  selRow: max.row,
+                })
             } else {
               // Paste multiple rows
               let newData = [...data]
-              const missingRows = min.row + pasteData.length - data.length
+              let {
+                start: blockStart,
+                end: blockEnd,
+                key: blockKey,
+              } = getBlockBounds(min.row, newData)
+              const maxRowsWithinBlock = blockEnd - min.row
+              // Rows that don't fit within the current block capacity
+              let missingWithinBlock = Math.max(
+                0,
+                pasteData.length - maxRowsWithinBlock
+              )
+              if (debugBlocks)
+                console.log('[dsg] paste multi-row', {
+                  minRow: min.row,
+                  rows: pasteData.length,
+                  blockStart,
+                  blockEnd,
+                  maxRowsWithinBlock,
+                  missingWithinBlock,
+                  blockAutoInsert,
+                })
 
-              if (missingRows > 0) {
-                if (!lockRows) {
-                  newData = [
-                    ...newData,
-                    ...new Array(missingRows).fill(0).map(() => createRow()),
-                  ]
+              if (missingWithinBlock > 0) {
+                if (!lockRows && blockAutoInsert) {
+                  // Insert rows at the end of block only (exactly what we need)
+                  const toInsert = missingWithinBlock
+                  if (toInsert > 0) {
+                    if (debugBlocks)
+                      console.log('[dsg] inserting rows at block end', {
+                        at: blockEnd,
+                        count: toInsert,
+                      })
+                    const rowsToAdd = new Array(toInsert).fill(0).map((_, i) =>
+                      createRowInBlock
+                        ? createRowInBlock({
+                            blockKey,
+                            rowIndex: blockEnd + i,
+                          })
+                        : createRow()
+                    )
+                    newData = [
+                      ...newData.slice(0, blockEnd),
+                      ...rowsToAdd,
+                      ...newData.slice(blockEnd),
+                    ]
+                    // Adjust blockEnd to include new rows so further pasting targets them
+                    blockEnd = blockEnd + toInsert
+                  } else {
+                    if (debugBlocks)
+                      console.log(
+                        '[dsg] truncating paste (no capacity & no insert)'
+                      )
+                    pasteData.splice(
+                      pasteData.length - missingWithinBlock,
+                      missingWithinBlock
+                    )
+                  }
                 } else {
-                  pasteData.splice(pasteData.length - missingRows, missingRows)
+                  if (debugBlocks)
+                    console.log(
+                      '[dsg] truncating paste (lockRows or no autoInsert)'
+                    )
+                  pasteData.splice(
+                    pasteData.length - missingWithinBlock,
+                    missingWithinBlock
+                  )
                 }
               }
 
@@ -795,16 +922,23 @@ export const DataSheetGrid = React.memo(
                     rowIndex < pasteData.length;
                     rowIndex++
                   ) {
+                    // Do not paste beyond block boundary
+                    const targetRow = Math.min(min.row + rowIndex, blockEnd - 1)
+                    if (debugBlocks && targetRow !== min.row + rowIndex)
+                      console.log('[dsg] clamp multi targetRow', {
+                        from: min.row + rowIndex,
+                        to: targetRow,
+                      })
                     if (
                       !isCellDisabled({
                         col: min.col + columnIndex,
-                        row: min.row + rowIndex,
+                        row: targetRow,
                       })
                     ) {
-                      newData[min.row + rowIndex] = await pasteValue({
-                        rowData: newData[min.row + rowIndex],
+                      newData[targetRow] = await pasteValue({
+                        rowData: newData[targetRow],
                         value: pasteData[rowIndex][columnIndex],
-                        rowIndex: min.row + rowIndex,
+                        rowIndex: targetRow,
                       })
                     }
                   }
@@ -815,21 +949,19 @@ export const DataSheetGrid = React.memo(
                 {
                   type: 'UPDATE',
                   fromRowIndex: min.row,
-                  toRowIndex:
-                    min.row +
-                    pasteData.length -
-                    (!lockRows && missingRows > 0 ? missingRows : 0),
+                  toRowIndex: Math.min(min.row + pasteData.length, blockEnd),
                 },
               ]
 
-              if (missingRows > 0 && !lockRows) {
+              if (missingWithinBlock > 0 && !lockRows && blockAutoInsert) {
                 operations.push({
                   type: 'CREATE',
-                  fromRowIndex: min.row + pasteData.length - missingRows,
-                  toRowIndex: min.row + pasteData.length,
+                  fromRowIndex: Math.max(blockEnd - missingWithinBlock, 0),
+                  toRowIndex: Math.min(blockEnd, min.row + pasteData.length),
                 })
               }
 
+              if (debugBlocks) console.log('[dsg] operations', operations)
               onChange(newData, operations)
               setActiveCell({ col: min.col, row: min.row })
               setSelectionCell({
@@ -837,8 +969,17 @@ export const DataSheetGrid = React.memo(
                   min.col + pasteData[0].length - 1,
                   columns.length - (hasStickyRightColumn ? 3 : 2)
                 ),
-                row: min.row + pasteData.length - 1,
+                row: Math.min(min.row + pasteData.length - 1, blockEnd - 1),
               })
+              if (debugBlocks)
+                console.log('[dsg] selection after multi-row paste', {
+                  col: min.col,
+                  row: min.row,
+                  selRow: Math.min(
+                    min.row + pasteData.length - 1,
+                    blockEnd - 1
+                  ),
+                })
             }
           }
         },
@@ -1791,7 +1932,33 @@ export const DataSheetGrid = React.memo(
             rowHeight={getRowSize}
             rowKey={rowKey}
             selection={selection}
-            rowClassName={rowClassName}
+            rowClassName={
+              getBlockKey
+                ? (((opts: { rowData: any; rowIndex: number }) => {
+                    const baseClass =
+                      typeof rowClassName === 'function'
+                        ? rowClassName(opts)
+                        : rowClassName
+                    const { rowIndex } = opts
+                    const key = getBlockKey({
+                      rowData: data[rowIndex],
+                      rowIndex,
+                    })
+                    const prevKey =
+                      rowIndex > 0
+                        ? getBlockKey({
+                            rowData: data[rowIndex - 1],
+                            rowIndex: rowIndex - 1,
+                          })
+                        : undefined
+                    const isBlockTop = key !== prevKey
+                    return cx(
+                      baseClass,
+                      isBlockTop && (blockTopClassName || 'dsg-block-top')
+                    )
+                  }) as any)
+                : rowClassName
+            }
             editing={editing}
             getContextMenuItems={getContextMenuItems}
             setRowData={setRowData}
@@ -1851,7 +2018,7 @@ export const DataSheetGrid = React.memo(
   )
 ) as <T extends any>(
   props: DataSheetGridProps<T> & { ref?: React.ForwardedRef<DataSheetGridRef> }
-) => JSX.Element
+) => ReactJSX.Element
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore

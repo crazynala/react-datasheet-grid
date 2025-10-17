@@ -49,6 +49,11 @@
   box-shadow: 0 1px var(--dsg-border-color) inset;
 }
 
+/* Thick border at the top of a block */
+.dsg-block-top .dsg-cell {
+  border-top-width: 3px;
+}
+
 .dsg-row-header {
   position: sticky;
   top: 0;

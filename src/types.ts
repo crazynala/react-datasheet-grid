@@ -93,7 +93,13 @@ export type AddRowsComponentProps = {
 
 export type ContextMenuItem =
   | {
-      type: 'INSERT_ROW_BELLOW' | 'DELETE_ROW' | 'DUPLICATE_ROW' | 'COPY' | 'CUT' | 'PASTE'
+      type:
+        | 'INSERT_ROW_BELLOW'
+        | 'DELETE_ROW'
+        | 'DUPLICATE_ROW'
+        | 'COPY'
+        | 'CUT'
+        | 'PASTE'
       action: () => void
     }
   | {
@@ -157,6 +163,26 @@ export type DataSheetGridProps<T> = {
   onActiveCellChange?: (opts: { cell: CellWithId | null }) => void
   onSelectionChange?: (opts: { selection: SelectionWithId | null }) => void
   onScroll?: React.UIEventHandler<HTMLDivElement> | undefined
+  // Blocks support (optional)
+  /**
+   * When provided, contiguous rows sharing the same key are treated as a block.
+   * Used to constrain paste and optionally render a thick border at the top of each block.
+   */
+  getBlockKey?: (opts: {
+    rowData: T
+    rowIndex: number
+  }) => string | number | null | undefined
+  /** If true, pasting beyond the end of a block will insert new rows at the end of that block (if rows are not locked). */
+  blockAutoInsert?: boolean
+  /** Optional factory to create a new row within a given block when blockAutoInsert is enabled. */
+  createRowInBlock?: (opts: {
+    blockKey: string | number | null | undefined
+    rowIndex: number
+  }) => T
+  /** Optional class name applied to block first rows; defaults to 'dsg-block-top'. */
+  blockTopClassName?: string
+  /** Enable verbose console logging for block computations and pastes. */
+  debugBlocks?: boolean
 }
 
 type CellWithIdInput = {

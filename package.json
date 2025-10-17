@@ -2,7 +2,17 @@
   "name": "react-datasheet-grid",
   "version": "4.11.5",
   "description": "An Excel-like React component to create beautiful spreadsheets.",
+  "type": "module",
   "main": "dist/index.js",
+  "module": "dist/index.js",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./dist/style.css": "./dist/style.css",
+    "./dist/style.layer.css": "./dist/style.layer.css"
+  },
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "rm -f tsconfig.tsbuildinfo && rimraf ./dist && tsc && cpx \"src/**/*.css\" dist",
