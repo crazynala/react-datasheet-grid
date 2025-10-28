@@ -129,7 +129,17 @@ export const DataSheetGrid = React.memo(
         refreshRate: 100,
       })
 
-      setHeightDiff(height ? displayHeight - height : 0)
+      // Guarded: avoid updating state during render; only update when value actually changes
+      useEffect(() => {
+        const next = height ? displayHeight - height : 0
+        // Only set when it meaningfully changes to avoid ping-pong loops
+        // A tiny epsilon smooths out off-by-1 flicker
+        const epsilon = 0.5
+        if (Math.abs(next - heightDiff) > epsilon) {
+          setHeightDiff(next)
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [height, displayHeight])
 
       const edges = useEdges(outerRef as any, width, height)
 

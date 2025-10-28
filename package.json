@@ -15,7 +15,7 @@
   },
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "rm -f tsconfig.tsbuildinfo && rimraf ./dist && tsc && cpx \"src/**/*.css\" dist",
+    "build": "rm -f tsconfig.tsbuildinfo && rimraf ./dist && node ./node_modules/typescript/bin/tsc && cpx \"src/**/*.css\" dist",
     "start": "concurrently \"tsc --watch\" \"cpx \\\"src/**/*.css\\\" dist --watch\"",
     "format": "prettier --write src/. && prettier --write example/src/.",
     "lint": "eslint src/.",
