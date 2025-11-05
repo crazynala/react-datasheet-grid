@@ -25,10 +25,12 @@
   user-select: none;
   box-sizing: border-box;
   color: black;
-  background: white;
+  background: var(--dsg-cell-background-color);
   position: relative;
   width: 100%;
   overflow: auto;
+  /* Reserve space for vertical scrollbar on the inline-end side only to avoid left offset */
+  scrollbar-gutter: stable;
   will-change: transform;
   direction: ltr;
 }
