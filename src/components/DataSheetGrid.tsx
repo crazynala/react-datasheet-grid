@@ -87,6 +87,8 @@ export const DataSheetGrid = React.memo(
         onBlur = DEFAULT_EMPTY_CALLBACK,
         onActiveCellChange = DEFAULT_EMPTY_CALLBACK,
         onSelectionChange = DEFAULT_EMPTY_CALLBACK,
+        onEditStart = DEFAULT_EMPTY_CALLBACK,
+        onEditEnd = DEFAULT_EMPTY_CALLBACK,
         rowClassName,
         cellClassName,
         onScroll,
@@ -100,6 +102,7 @@ export const DataSheetGrid = React.memo(
       ref: React.ForwardedRef<DataSheetGridRef>
     ): ReactJSX.Element => {
       const lastEditingCellRef = useRef<Cell | null>(null)
+      const editSessionRef = useRef<{ reason: string | null }>({ reason: null })
       const disableContextMenu = disableContextMenuRaw || lockRows
       const columns = useColumns(rawColumns, gutterColumn, stickyRightColumn)
       const hasStickyRightColumn = Boolean(stickyRightColumn)
@@ -498,6 +501,45 @@ export const DataSheetGrid = React.memo(
         [onChange]
       )
 
+      const callbacksRef = useRef({
+        onFocus,
+        onBlur,
+        onActiveCellChange,
+        onSelectionChange,
+        onEditStart,
+        onEditEnd,
+      })
+      callbacksRef.current.onFocus = onFocus
+      callbacksRef.current.onBlur = onBlur
+      callbacksRef.current.onActiveCellChange = onActiveCellChange
+      callbacksRef.current.onSelectionChange = onSelectionChange
+      callbacksRef.current.onEditStart = onEditStart
+      callbacksRef.current.onEditEnd = onEditEnd
+
+      const emitEditStart = useCallback(
+        (reason: 'typing' | 'paste' | 'delete' | 'fill') => {
+          callbacksRef.current.onEditStart({ reason })
+        },
+        []
+      )
+      const emitEditEnd = useCallback(
+        (reason: 'typing' | 'paste' | 'delete' | 'fill') => {
+          callbacksRef.current.onEditEnd({ reason })
+        },
+        []
+      )
+
+      useEffect(() => {
+        if (editing && editSessionRef.current.reason !== 'typing') {
+          emitEditStart('typing')
+          editSessionRef.current.reason = 'typing'
+        }
+        if (!editing && editSessionRef.current.reason === 'typing') {
+          emitEditEnd('typing')
+          editSessionRef.current.reason = null
+        }
+      }, [editing, emitEditStart, emitEditEnd])
+
       const deleteRows = useCallback(
         (rowMin: number, rowMax: number = rowMin) => {
           if (lockRows) {
@@ -518,6 +560,7 @@ export const DataSheetGrid = React.memo(
             return a && { col: a.col, row }
           })
           setSelectionCell(null)
+          emitEditStart('delete')
           onChange(
             [
               ...dataRef.current.slice(0, rowMin),
@@ -531,8 +574,16 @@ export const DataSheetGrid = React.memo(
               },
             ]
           )
+          emitEditEnd('delete')
         },
-        [lockRows, onChange, setActiveCell, setSelectionCell]
+        [
+          lockRows,
+          onChange,
+          emitEditStart,
+          emitEditEnd,
+          setActiveCell,
+          setSelectionCell,
+        ]
       )
 
       const deleteSelection = useCallback(
@@ -585,6 +636,7 @@ export const DataSheetGrid = React.memo(
             return
           }
 
+          emitEditStart('delete')
           onChange(newData, [
             {
               type: 'UPDATE',
@@ -592,6 +644,7 @@ export const DataSheetGrid = React.memo(
               toRowIndex: max.row + 1,
             },
           ])
+          emitEditEnd('delete')
         },
         [
           activeCell,
@@ -600,6 +653,8 @@ export const DataSheetGrid = React.memo(
           deleteRows,
           isCellDisabled,
           onChange,
+          emitEditStart,
+          emitEditEnd,
           selection?.max,
           selection?.min,
           setActiveCell,
@@ -719,6 +774,8 @@ export const DataSheetGrid = React.memo(
       const applyPasteDataToDatasheet = useCallback(
         async (pasteData: string[][]) => {
           if (!editing && activeCell) {
+            emitEditStart('paste')
+            try {
             const min: Cell = selection?.min || activeCell
             const max: Cell = selection?.max || activeCell
 
@@ -991,6 +1048,9 @@ export const DataSheetGrid = React.memo(
                   ),
                 })
             }
+            } finally {
+              emitEditEnd('paste')
+            }
           }
         },
         [
@@ -999,6 +1059,8 @@ export const DataSheetGrid = React.memo(
           createRow,
           data,
           editing,
+          emitEditEnd,
+          emitEditStart,
           hasStickyRightColumn,
           isCellDisabled,
           lockRows,
@@ -1276,6 +1338,7 @@ export const DataSheetGrid = React.memo(
               }
             }
 
+            emitEditStart('fill')
             Promise.all(
               copyData[0].map((_, columnIndex) => {
                 const prePasteValues =
@@ -1331,6 +1394,7 @@ export const DataSheetGrid = React.memo(
                   toRowIndex: max.row + 1 + expandSelectionRowsCount,
                 },
               ])
+              emitEditEnd('fill')
             })
 
             setExpandSelectionRowsCount(0)
@@ -1369,6 +1433,8 @@ export const DataSheetGrid = React.memo(
         selection?.min,
         selection?.max,
         data,
+        emitEditStart,
+        emitEditEnd,
         onChange,
         setActiveCell,
         setSelectionCell,
@@ -1835,6 +1901,13 @@ export const DataSheetGrid = React.memo(
             (activeCell ? { min: activeCell, max: activeCell } : null),
           columns
         ),
+        getActiveCell: () => getCellWithId(activeCell, columns),
+        getSelection: () =>
+          getSelectionWithId(
+            selection ??
+              (activeCell ? { min: activeCell, max: activeCell } : null),
+            columns
+          ),
         setSelection: (value) => {
           const selection = getSelection(
             value,
@@ -1862,17 +1935,6 @@ export const DataSheetGrid = React.memo(
           setSelectionCell(null)
         },
       }))
-
-      const callbacksRef = useRef({
-        onFocus,
-        onBlur,
-        onActiveCellChange,
-        onSelectionChange,
-      })
-      callbacksRef.current.onFocus = onFocus
-      callbacksRef.current.onBlur = onBlur
-      callbacksRef.current.onActiveCellChange = onActiveCellChange
-      callbacksRef.current.onSelectionChange = onSelectionChange
 
       useEffect(() => {
         if (lastEditingCellRef.current) {

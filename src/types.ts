@@ -162,6 +162,8 @@ export type DataSheetGridProps<T> = {
   onBlur?: (opts: { cell: CellWithId }) => void
   onActiveCellChange?: (opts: { cell: CellWithId | null }) => void
   onSelectionChange?: (opts: { selection: SelectionWithId | null }) => void
+  onEditStart?: (opts: { reason: 'typing' | 'paste' | 'delete' | 'fill' }) => void
+  onEditEnd?: (opts: { reason: 'typing' | 'paste' | 'delete' | 'fill' }) => void
   onScroll?: React.UIEventHandler<HTMLDivElement> | undefined
   // Blocks support (optional)
   /**
@@ -203,6 +205,8 @@ export type SelectionWithId = { min: CellWithId; max: CellWithId }
 export type DataSheetGridRef = {
   activeCell: CellWithId | null
   selection: SelectionWithId | null
+  getActiveCell: () => CellWithId | null
+  getSelection: () => SelectionWithId | null
   setActiveCell: (activeCell: CellWithIdInput | null) => void
   setSelection: (selection: SelectionWithIdInput | null) => void
 }
