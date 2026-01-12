@@ -772,8 +772,9 @@ export const DataSheetGrid = React.memo(
       useDocumentEventListener('cut', onCut)
 
       const applyPasteDataToDatasheet = useCallback(
-        async (pasteData: string[][]) => {
-          if (!editing && activeCell) {
+        async (pasteData: string[][], opts?: { force?: boolean }) => {
+          const allowPaste = opts?.force || !editing
+          if (allowPaste && activeCell) {
             emitEditStart('paste')
             try {
             const min: Cell = selection?.min || activeCell
@@ -1933,6 +1934,14 @@ export const DataSheetGrid = React.memo(
           setEditing(false)
           setSelectionMode({ columns: false, active: false, rows: false })
           setSelectionCell(null)
+        },
+        pasteFromText: (text, format = 'text') => {
+          if (!text) return
+          const pasteData =
+            format === 'html'
+              ? parseTextHtmlData(text)
+              : parseTextPlainData(text)
+          applyPasteDataToDatasheet(pasteData, { force: true })
         },
       }))
 

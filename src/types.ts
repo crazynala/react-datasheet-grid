@@ -209,4 +209,5 @@ export type DataSheetGridRef = {
   getSelection: () => SelectionWithId | null
   setActiveCell: (activeCell: CellWithIdInput | null) => void
   setSelection: (selection: SelectionWithIdInput | null) => void
+  pasteFromText?: (text: string, format?: 'text' | 'html') => void
 }
